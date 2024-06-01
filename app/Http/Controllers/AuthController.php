@@ -3,18 +3,24 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Mail\forgot as MailForgot;
+use App\Models\Forgot;
 use App\Models\User;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller implements HasMiddleware
 {
     public static function middleware(): array
     {
         return [
-            new Middleware('auth', except: ['login','register']),
-
+            new Middleware('auth', except: ['login','register','forgot','getForgotView','setForgotPassword']),
+            new Middleware('throttle:0,1,1', only:['forgot']),
         ];
     }
 
@@ -248,5 +254,94 @@ class AuthController extends Controller implements HasMiddleware
             'token_type' => 'bearer',
             'expires_in' => auth()->factory()->getTTL() * 60
         ]);
+    }
+    /**
+    * @OA\Post(
+    *     path="/auth/password/forgot",
+    *     tags={"Authentication"},
+    *     summary="forgot",
+    *     description="forgot password",
+    *     operationId="forgot password",
+  *     @OA\Response(
+    *         response=200,
+    *         description="Success Message",
+    *         @OA\JsonContent(ref="#/components/schemas/SuccessModel"),
+    *     ),
+    *     @OA\Response(
+    *         response=400,
+    *         description="an 'unexpected' error",
+    *         @OA\JsonContent(ref="#/components/schemas/ErrorModel"),
+    *     ),
+    *     @OA\RequestBody(
+    *         description="tasks input",
+    *         required=true,
+    *         @OA\JsonContent(
+    *             @OA\Property(
+    *                 property="email",
+    *                 type="string",
+    *                 description="email",
+    *                 example="test@example.com"
+    *             )
+    *         )
+    *     )
+    * )
+    *
+    * Get a JWT via given credentials.
+    *
+    * @return \Illuminate\Http\JsonResponse
+    */
+
+    public function forgot(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+        ]);
+
+        try {
+            $user = User::whereEmail($request->email)->first();
+            if (!$user) {
+                sleep(2);
+                return $this->success(['message' => 'Password reset link sent to your email']);
+            }
+            Forgot::whereEmail($user->email)->update(['status' => 1]);
+            $token = Str::random(60);
+            Forgot::create(
+                ['email' => $user->email, 'token' => $token, ]
+            );
+            Mail::to($user->email)->send(new MailForgot($user, $token));
+            return $this->success(['message' => 'Password reset link sent to your email']);
+        } catch (Exception $e) {
+            Log::error($e->getMessage());
+            return $this->error('Something went wrong');
+        }
+    }
+    public function getForgotView(string $token)
+    {
+        return view('forgotpassword', ['token' => $token]);
+    }
+    public function setForgotPassword(Request $request, string $token)
+    {
+        $request->validate([
+            'password'     => 'required|string|min:7|confirmed',
+        ]);
+        try {
+            $forgotPassword = Forgot::whereToken($token)->whereStatus(0)->latest()->firstOrFail();
+            if (!$forgotPassword) {
+                return $this->error('invalid token');
+            }
+
+            $user = User::whereEmail($forgotPassword->email)->first();
+
+            $forgotPassword->status = 1;
+            $forgotPassword->save();
+            if (!$user) {
+                return $this->error('user not found');
+            }
+            $user->update(['password' => bcrypt(request('password'))]);
+            return $this->success($user);
+        } catch (Exception $e) {
+            Log::error($e->getMessage());
+            return $this->error('Password change failed');
+        }
     }
 }
