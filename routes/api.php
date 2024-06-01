@@ -17,5 +17,9 @@ Route::group([
     Route::post('logout', [AuthController::class,'logout']);
     Route::get('refresh', [AuthController::class,'refresh']);
     Route::get('me', [AuthController::class,'me']);
-
+    Route::group(['prefix' => 'password'], function () {
+        Route::post('forgot', [AuthController::class,'forgot']);
+        Route::get('forgotPassword/{token}', [AuthController::class, 'getForgotView'])->name('forgot.password');
+        Route::post('forgotPassword/{token}', [AuthController::class, 'setForgotPassword'])->name('change-password');
+    });
 });
