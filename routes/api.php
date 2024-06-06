@@ -17,6 +17,9 @@ Route::group([
     Route::post('logout', [AuthController::class,'logout']);
     Route::get('refresh', [AuthController::class,'refresh']);
     Route::get('me', [AuthController::class,'me']);
+    Route::post('change-password', [AuthController::class, 'changePassword']);
+    Route::get('verify-email', [AuthController::class, 'verifyEmail']);
+    Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmailAddress'])->name('verification.verify');
     Route::group(['prefix' => 'password'], function () {
         Route::post('forgot', [AuthController::class,'forgot']);
         Route::get('forgotPassword/{token}', [AuthController::class, 'getForgotView'])->name('forgot.password');

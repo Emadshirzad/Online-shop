@@ -10,6 +10,8 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
@@ -19,7 +21,7 @@ class AuthController extends Controller implements HasMiddleware
     public static function middleware(): array
     {
         return [
-            new Middleware('auth', except: ['login','register','forgot','getForgotView','setForgotPassword']),
+            new Middleware('auth', except: ['login','register','forgot','getForgotView','setForgotPassword','verifyEmailAddress','']),
             new Middleware('throttle:0,1,1', only:['forgot']),
         ];
     }
@@ -156,27 +158,75 @@ class AuthController extends Controller implements HasMiddleware
         $user = User::create($request->all());
         return response()->json(['message' => 'Register successful']);
     }
+
     /**
-     * @OA\Get(
-     *     path="/auth/me",
-     *     tags={"Authentication"},
-     *     summary="my info",
-     *     description="my info",
-     *     @OA\Response(
-     *         response=200,
-     *         description="Success Message",
-     *         @OA\JsonContent(ref="#/components/schemas/UserModel"),
-     *     ),
-     *     @OA\Response(
-     *         response=400,
-     *         description="an 'unexpected' error",
-     *         @OA\JsonContent(ref="#/components/schemas/ErrorModel"),
-     *     ),security={{"api_key": {}}}
-     * )
-     * Get the authenticated User.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+    * @OA\Get(
+    *     path="/auth/verify-email",
+    *     tags={"Authentication"},
+    *     summary="verify email",
+    *     description="verify email",
+    *     @OA\Response(
+    *         response=200,
+    *         description="Success Message",
+    *         @OA\JsonContent(ref="#/components/schemas/SuccessModel"),
+    *     ),
+    *     @OA\Response(
+    *         response=400,
+    *         description="an 'unexpected' error",
+    *         @OA\JsonContent(ref="#/components/schemas/ErrorModel"),
+    *     ),security={{"api_key": {}}}
+    * )
+    * Get the authenticated User.
+    *
+    * @return \Illuminate\Http\JsonResponse
+    */
+    public function verifyEmail()
+    {
+        /** @var User $user */
+        $user = Auth::user();
+        if ($user->hasVerifiedEmail()) {
+            return $this->success('Email already verified.');
+        }
+        $user->sendEmailVerificationNotification();
+        return $this->success($user);
+    }
+
+    public function verifyEmailAddress(Request $request)
+    {
+        $user = User::find($request->route('id'));
+
+        if ($user->hasVerifiedEmail()) {
+            return $this->success('Email already verified.');
+        }
+
+        if ($user->markEmailAsVerified()) {
+            return $this->success($user);
+        }
+
+        return $this->error("$user->email could not be verified.");
+    }
+    /**
+        * @OA\Get(
+        *     path="/auth/me",
+        *     tags={"Authentication"},
+        *     summary="my info",
+        *     description="my info",
+        *     @OA\Response(
+        *         response=200,
+        *         description="Success Message",
+        *         @OA\JsonContent(ref="#/components/schemas/UserModel"),
+        *     ),
+        *     @OA\Response(
+        *         response=400,
+        *         description="an 'unexpected' error",
+        *         @OA\JsonContent(ref="#/components/schemas/ErrorModel"),
+        *     ),security={{"api_key": {}}}
+        * )
+        * Get the authenticated User.
+        *
+        * @return \Illuminate\Http\JsonResponse
+        */
+
     public function me()
     {
         return response()->json(auth()->user());
@@ -344,4 +394,68 @@ class AuthController extends Controller implements HasMiddleware
             return $this->error('Password change failed');
         }
     }
+    /**
+    * @OA\Post(
+    *     path="/auth/change-password",
+    *     tags={"Authentication"},
+    *     summary="Change user password",
+    *     description="Change user password",
+    *     @OA\RequestBody(
+    *         description="tasks input",
+    *         required=true,
+    *         @OA\JsonContent(
+    *             @OA\Property(
+    *                 property="current_password",
+    *                 type="string",
+    *                 description="current password",
+    *                 example="******"
+    *             ),
+    *             @OA\Property(
+    *                 property="new_password",
+    *                 type="string",
+    *                 description="new password",
+    *                 example="******",
+    *             ),
+    *             @OA\Property(
+    *                 property="new_password_confirmation",
+    *                 type="string",
+    *                 description="confirmation your password",
+    *                 example="******",
+    *             )
+    *         )
+    *     ),
+    *     @OA\Response(
+    *         response=200,
+    *         description="Success Message",
+    *         @OA\JsonContent(ref="#/components/schemas/SuccessModel"),
+    *     ),
+    *     @OA\Response(
+    *         response=400,
+    *         description="an 'unexpected' error",
+    *         @OA\JsonContent(ref="#/components/schemas/ErrorModel"),
+    *     ),security={{"api_key": {}}}
+    * )
+    * change password
+    */
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => 'required',
+            'new_password'     => 'required|confirmed',
+        ]);
+
+        /** @var User $user */
+        $user = Auth::user();
+        try {
+            if (!Hash::check($request->current_password, $user->password)) {
+                return $this->error('The current password is incorrect.');
+            }
+            $user->update(['password' => Hash::make($request->new_password)]);
+            return $this->success(['message' => 'Password changed successfully']);
+        } catch (Exception $e) {
+            Log::error($e->getMessage());
+            return $this->error('An error occurred while changing the password.');
+        }
+    }
+
 }
