@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Admin\ProductController as AdminProductController;
+use App\Http\Controllers\Admin\CategoryController as AdminCategoryController;
 use App\Http\Controllers\AuthController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -24,5 +26,32 @@ Route::group([
         Route::post('forgot', [AuthController::class,'forgot']);
         Route::get('forgotPassword/{token}', [AuthController::class, 'getForgotView'])->name('forgot.password');
         Route::post('forgotPassword/{token}', [AuthController::class, 'setForgotPassword'])->name('change-password');
+    });
+});
+Route::group([
+    'prefix' => 'admin'
+], function ($router) {
+    Route::group([
+        'prefix' => 'product'
+    ], function ($router) {
+        Route::get('', [AdminProductController::class, 'index']);
+        Route::post('', [AdminProductController::class, 'store']);
+        Route::get('{id}', [AdminProductController::class, 'show']);
+        Route::put('{id}', [AdminProductController::class, 'update']);
+        Route::delete('{id}', [AdminProductController::class, 'destroy']);
+    });
+});
+
+Route::group([
+    'prefix' => 'admin'
+], function ($router) {
+    Route::group([
+        'prefix' => 'category'
+    ], function ($router) {
+        Route::get('', [AdminCategoryController::class, 'index']);
+        Route::post('', [AdminCategoryController::class, 'store']);
+        Route::get('{id}', [AdminCategoryController::class, 'show']);
+        Route::put('{id}', [AdminCategoryController::class, 'update']);
+        Route::delete('{id}', [AdminCategoryController::class, 'destroy']);
     });
 });
